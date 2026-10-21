@@ -1,0 +1,97 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>PoC Lastzonen — PV-Carport</title>
+<style>
+  :root { --bg:#0f1420; --card:#1a2233; --txt:#e8ecf5; --dim:#9aa7bd; --acc:#4da3ff; --ok:#3ecf8e; --warn:#ffb84d; }
+  * { box-sizing:border-box; margin:0; }
+  body { font-family:system-ui,sans-serif; background:var(--bg); color:var(--txt); padding:24px; max-width:720px; margin:0 auto; }
+  h1 { font-size:1.3rem; margin-bottom:4px; }
+  .sub { color:var(--dim); font-size:.85rem; margin-bottom:20px; }
+  .card { background:var(--card); border-radius:10px; padding:16px; margin-bottom:14px; }
+  label { display:block; font-size:.8rem; color:var(--dim); margin:10px 0 4px; }
+  select, input { width:100%; padding:9px; border-radius:7px; border:1px solid #33405c; background:#0f1420; color:var(--txt); font-size:.95rem; }
+  button { margin-top:14px; width:100%; padding:11px; border:0; border-radius:8px; background:var(--acc); color:#08111f; font-weight:700; font-size:1rem; cursor:pointer; }
+  .grid { display:grid; grid-template-columns:1fr 1fr; gap:10px; }
+  .kpi { background:#0f1420; border-radius:8px; padding:10px; }
+  .kpi .v { font-size:1.25rem; font-weight:700; color:var(--ok); }
+  .kpi .l { font-size:.72rem; color:var(--dim); }
+  .warn { color:var(--warn); font-size:.8rem; margin-top:10px; }
+  .hinweis { color:var(--dim); font-size:.75rem; margin-top:10px; }
+  #fehler { color:#ff6b6b; font-size:.85rem; margin-top:10px; min-height:1em; }
+</style>
+</head>
+<body>
+<h1>PoC Lastzonen — PV-Carport</h1>
+<div class="sub">Cleanroom-PoC — Richtwerte, verbindliche Bemessung durch Fachstatiker.</div>
+
+<div class="card">
+  <label for="bundesland">Bundesland (Zonen-Vorschlag)</label>
+  <select id="bundesland"></select>
+  <div class="grid">
+    <div><label for="schneezone">Schneelastzone</label><select id="schneezone">
+      <option>1</option><option>1a</option><option>2</option><option>2a</option><option>3</option>
+    </select></div>
+    <div><label for="windzone">Windzone</label><select id="windzone">
+      <option>1</option><option>2</option><option>2*</option><option>3</option><option>4</option>
+    </select></div>
+    <div><label for="hoehe">Höhe über NN (m)</label><input id="hoehe" type="number" value="180" min="0"></div>
+    <div><label for="neigung">Dachneigung (°)</label><input id="neigung" type="number" value="15" min="0" max="89"></div>
+  </div>
+  <button id="berechnen">Berechnen</button>
+  <div id="fehler"></div>
+</div>
+
+<div class="card" id="ergebnis" hidden>
+  <div class="grid">
+    <div class="kpi"><div class="v" id="k-sk">–</div><div class="l">Schneelast sk (kN/m²)</div></div>
+    <div class="kpi"><div class="v" id="k-dach">–</div><div class="l">Dachlast sk·μ1 (kN/m²)</div></div>
+    <div class="kpi"><div class="v" id="k-qb">–</div><div class="l">Winddruck qb (kN/m²)</div></div>
+    <div class="kpi"><div class="v" id="k-hef">–</div><div class="l">Heftigkeit</div></div>
+  </div>
+  <div class="warn" id="warnung"></div>
+  <div class="hinweis" id="stau"></div>
+</div>
+
+<script>
+const BL = ["Baden-Württemberg","Bayern","Berlin","Brandenburg","Bremen","Hamburg","Hessen","Mecklenburg-Vorpommern","Niedersachsen","Nordrhein-Westfalen","Rheinland-Pfalz","Saarland","Sachsen","Sachsen-Anhalt","Schleswig-Holstein","Thüringen"];
+const sel = document.getElementById("bundesland");
+BL.forEach(b => { const o = document.createElement("option"); o.textContent = b; sel.appendChild(o); });
+sel.value = "Hessen";
+
+async function zonenVorschlag() {
+  const r = await fetch("/api/zonen?bundesland=" + encodeURIComponent(sel.value));
+  const d = await r.json();
+  if (r.ok) { document.getElementById("schneezone").value = d.schnee; document.getElementById("windzone").value = d.wind; }
+}
+
+async function berechnen() {
+  const fehler = document.getElementById("fehler");
+  fehler.textContent = "";
+  const p = new URLSearchParams({
+    schneezone: document.getElementById("schneezone").value,
+    windzone: document.getElementById("windzone").value,
+    hoehe: document.getElementById("hoehe").value || "0",
+    neigung: document.getElementById("neigung").value || "0"
+  });
+  const r = await fetch("/api/berechnen?" + p);
+  const d = await r.json();
+  const box = document.getElementById("ergebnis");
+  if (!r.ok) { box.hidden = true; fehler.textContent = d.fehler || "unbekannter Fehler"; return; }
+  document.getElementById("k-sk").textContent = d.sk_knm2.toFixed(2);
+  document.getElementById("k-dach").textContent = d.sk_dach_knm2.toFixed(2);
+  document.getElementById("k-qb").textContent = d.qb_knm2.toFixed(2);
+  document.getElementById("k-hef").textContent = d.heftigkeit;
+  document.getElementById("warnung").textContent = d.warnung || "";
+  document.getElementById("stau").textContent = d.stau_hinweis + " " + d.hinweis;
+  box.hidden = false;
+}
+
+document.getElementById("berechnen").addEventListener("click", berechnen);
+sel.addEventListener("change", zonenVorschlag);
+zonenVorschlag();
+</script>
+</body>
+</html>
